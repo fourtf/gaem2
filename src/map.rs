@@ -10,7 +10,7 @@ impl Map {
     }
 
     pub fn move_item(&self, rect: &mut Rect, dx: f64, dy: f64, time_passed: f64) -> Collision {
-        let mut on_floor = false;
+        let mut collision = Collision::default();
 
         // y position
         if dy != 0.0 {
@@ -20,7 +20,7 @@ impl Map {
                 for x in rect.x as i64..(rect.right() + 0.9999) as i64 {
                     if self.get_i(x, rect.bottom() as i64) == 1 {
                         rect.move_bottom(rect.bottom() as i64 as f64);
-                        on_floor = true;
+                        collision.bottom = true;
                         break;
                     }
                 }
@@ -28,6 +28,7 @@ impl Map {
                 for x in rect.x as i64..(rect.right() + 0.999) as i64 {
                     if self.get_i(x, rect.y.floor() as i64) == 1 {
                         rect.y = (rect.y.floor() as i64 + 1) as f64;
+                        collision.top = true;
                         break;
                     }
                 }
@@ -42,6 +43,7 @@ impl Map {
                 for y in rect.y as i64..(rect.bottom() + 0.999) as i64 {
                     if self.get_i(rect.right() as i64, y) == 1 {
                         rect.move_right(rect.right() as i64 as f64);
+                        collision.right = true;
                         break;
                     }
                 }
@@ -49,13 +51,14 @@ impl Map {
                 for y in rect.y as i64..(rect.bottom() + 0.999) as i64 {
                     if self.get_i(rect.x.floor() as i64, y) == 1 {
                         rect.x = (rect.x.floor() as i64 + 1) as f64;
+                        collision.left = true;
                         break;
                     }
                 }
             }
         }
 
-        Collision { on_floor: on_floor }
+        collision
     }
 
     fn get_i(&self, x: i64, y: i64) -> u8 {
@@ -74,12 +77,16 @@ impl Map {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct Collision {
-    on_floor: bool,
+    pub left: bool,
+    pub right: bool,
+    pub top: bool,
+    pub bottom: bool,
 }
 
 impl Collision {
     pub fn is_on_floor(&self) -> bool {
-        return self.on_floor;
+        return self.bottom;
     }
 }

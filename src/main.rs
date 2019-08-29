@@ -190,7 +190,7 @@ fn main() -> Result<(), String> {
         }
 
         player_dy += 60.0 * time_passed;
-        player_dy = player_dy.max(-40.0).min(40.0);
+        player_dy = player_dy.max(-40.0).min(20.0);
 
         if is_left_down {
             dx -= 10.0;
@@ -203,6 +203,14 @@ fn main() -> Result<(), String> {
         player_on_floor = player_collision.is_on_floor();
         if player_on_floor {
             player_dy = 0.0;
+        }
+
+        if player_collision.top {
+            player_dy = player_dy.max(0.0);
+        }
+
+        if player_collision.left || player_collision.right {
+            player_dy = player_dy.min(4.0);
         }
 
         is_jump_press = false;
