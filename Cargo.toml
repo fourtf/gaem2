@@ -5,8 +5,9 @@ authors = ["fourtf <tf.four@gmail.com>"]
 build = "build.rs"
 
 [build-dependencies]
-gl_generator = "0.13.0"
+gl_generator = "0.13.1"
 
 [dependencies]
 sdl2 = "0.32.2"
 notify = "4.0.12"
+png = "0.15.0"

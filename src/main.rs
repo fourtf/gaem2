@@ -79,6 +79,7 @@ fn main() -> Result<(), String> {
 
     gl::load_with(|name| video_subsystem.gl_get_proc_address(name) as *const _);
     canvas.window().gl_set_context_to_current()?;
+    init_drawing();
 
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
@@ -110,9 +111,14 @@ fn main() -> Result<(), String> {
         }
     })?;
 
-    let mut player_rect = Rect::new(1.0, 0.0, 1.0, 1.0);
+    let mut player_rect = Rect::new(1.0, 0.0, 0.9, 0.7);
     let mut player_on_floor = false;
+    let mut player_sliding_on_wall = false;
+    let mut player_sliding_on_left_wall = false;
+    #[allow(unused_assignments)]
+    let mut player_sliding_on_right_wall = false;
     let mut player_dy: f64 = 0.0;
+    let mut player_dx: f64 = 0.0;
 
     let mut is_left_down = false;
     let mut is_right_down = false;
@@ -122,9 +128,9 @@ fn main() -> Result<(), String> {
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-        vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
-        vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        vec![1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+        vec![1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
         vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -135,6 +141,9 @@ fn main() -> Result<(), String> {
     block_shader.load().unwrap();
     let mut bg_shader = Shader::frag(&mut content, "shaders/bg.frag");
     bg_shader.load().unwrap();
+
+    let mut player_texture = Texture::new(&mut content, "textures/pajaW.png");
+    player_texture.load().unwrap();
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -183,36 +192,65 @@ fn main() -> Result<(), String> {
         content.update();
 
         // physics
-        let mut dx = 0.0;
-
-        if player_on_floor && is_jump_press {
-            player_dy = -25.0;
+        if is_jump_press {
+            if player_on_floor {
+                player_dy = -25.0;
+            } else if player_sliding_on_wall {
+                player_dy = -15.0;
+                player_dx = if player_sliding_on_left_wall {
+                    10.0
+                } else {
+                    -10.0
+                };
+            }
         }
 
-        player_dy += 60.0 * time_passed;
-        player_dy = player_dy.max(-40.0).min(20.0);
+        player_dy += 50.0 * time_passed;
+        player_dy = player_dy.max(-20.0).min(15.0);
 
+        // left + right input:
+        let turn_speed = if player_on_floor { 100.0 } else { 70.0 };
         if is_left_down {
-            dx -= 10.0;
+            player_dx -= turn_speed * time_passed;
         }
         if is_right_down {
-            dx += 10.0;
+            player_dx += turn_speed * time_passed;
         }
 
-        let player_collision = map.move_item(&mut player_rect, dx, player_dy, time_passed);
+        if !is_right_down && !is_left_down {
+            let slow_down_speed = if player_on_floor { 150.0 } else { 75.0 };
+            if player_dx > 0.0 {
+                player_dx = (player_dx - slow_down_speed * time_passed).max(0.0);
+            } else {
+                player_dx = (player_dx + slow_down_speed * time_passed).min(0.0);
+            }
+        }
+
+        player_dx = player_dx.max(-10.0).min(10.0);
+
+        let player_collision = map.move_item(&mut player_rect, player_dx, player_dy, time_passed);
+
+        // floor collision
         player_on_floor = player_collision.is_on_floor();
         if player_on_floor {
             player_dy = 0.0;
         }
 
+        // ceiling collision
         if player_collision.top {
             player_dy = player_dy.max(0.0);
         }
 
-        if player_collision.left || player_collision.right {
+        // wall collision
+        player_sliding_on_left_wall = player_collision.left;
+        player_sliding_on_right_wall = player_collision.right;
+        player_sliding_on_wall = player_sliding_on_left_wall || player_sliding_on_right_wall;
+
+        if player_sliding_on_wall {
             player_dy = player_dy.min(4.0);
         }
 
+        // cleanup
         is_jump_press = false;
 
         // render level

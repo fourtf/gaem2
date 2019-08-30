@@ -1,13 +1,22 @@
 extern crate notify;
+extern crate png;
+
 use self::notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use gl;
 use gl::types::*;
 use rect::Rect;
 use std::collections::HashMap;
+use std::fs::File;
 use std::mem::transmute;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
+
+pub fn init_drawing() {
+    unsafe {
+        gl::Enable(gl::TEXTURE_2D);
+    }
+}
 
 pub struct Content {
     base_path: PathBuf,
@@ -175,6 +184,113 @@ impl Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         self.delete_shader();
+    }
+}
+
+#[derive(Default)]
+pub struct Texture {
+    path: PathBuf,
+    native: Option<u32>,
+    current_version: u64, // for auto-reload
+}
+
+impl Texture {
+    /// Creates a fragment shader.
+    pub fn new(content: &mut Content, path: &str) -> Texture {
+        let mut buf = PathBuf::new();
+        buf.push(&content.base_path);
+        buf.push(path);
+        buf = buf.canonicalize().unwrap();
+
+        &content.resource_versions.insert(buf.clone(), 0);
+
+        println!("Registering: {:?}", &buf);
+
+        Texture {
+            path: buf,
+            ..Default::default()
+        }
+    }
+
+    pub fn reset() {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+        }
+    }
+
+    pub fn load(&mut self) -> Result<(), String> {
+        println!("Loading: {:?}", &self.path);
+
+        // let bytes = fs::read(&self.path)
+        //     .map_err(|err| format!("{} when loading {}", err, self.path.to_str().unwrap()))?;
+
+        let decoder = png::Decoder::new(File::open(&self.path).unwrap());
+        // .map_err(|err| format!("{} when loading {}", err, self.path.to_sThe glGenTextures function is only available in OpenGL version 1.1 or later.tr().unwrap()))?;
+
+        let (info, mut reader) = decoder.read_info().unwrap();
+        let mut buf = vec![0; info.buffer_size()];
+        reader.next_frame(&mut buf).unwrap();
+
+        // Delete old texture.
+        self.delete_texture();
+
+        // Load new shader.
+        unsafe {
+            let mut tex: GLuint = 0;
+            gl::GenTextures(1, transmute(&tex));
+            gl::BindTexture(gl::TEXTURE_2D, tex);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGBA as i32,
+                info.width as i32,
+                info.height as i32,
+                0,
+                gl::RGB,
+                gl::UNSIGNED_BYTE,
+                transmute(buf.as_mut_ptr()), // try removing as_mut_ptr
+            );
+
+            self.native = Some(tex);
+        }
+
+        Ok(())
+    }
+
+    pub fn select(&mut self, content: &mut Content) {
+        // println!("Selecting: {:?}", &self.path);
+        match content.resource_versions.get(&self.path) {
+            Some(new_version) => {
+                if *new_version != self.current_version {
+                    self.load().unwrap();
+                    self.current_version = *new_version;
+                }
+            }
+            _ => (),
+        }
+
+        match self.native {
+            Some(native) => unsafe {
+                gl::BindTexture(gl::TEXTURE_2D, native);
+            },
+            _ => (),
+        }
+    }
+
+    fn delete_texture(&mut self) {
+        match self.native {
+            Some(program) => unsafe {
+                gl::DeleteTextures(1, &program);
+            },
+            _ => (),
+        }
+        self.native = None;
+    }
+}
+
+impl Drop for Texture {
+    fn drop(&mut self) {
+        self.delete_texture();
     }
 }
 
