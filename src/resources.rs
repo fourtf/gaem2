@@ -1,6 +1,8 @@
+extern crate colored;
 extern crate notify;
 extern crate png;
 
+use self::colored::Colorize;
 use self::notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use gl;
 use gl::types::*;
@@ -75,30 +77,52 @@ impl Content {
             }
         }
     }
+
+    fn should_update_resource(&mut self, path: &PathBuf, current_version: &mut u64) -> bool {
+        match self.resource_versions.get(path) {
+            Some(new_version) => {
+                if *new_version != *current_version {
+                    *current_version = *new_version;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Default)]
 pub struct Shader {
-    path: PathBuf,
-    native_shader: Option<u32>,
+    frag_path: PathBuf,
+    vert_path: PathBuf,
+    native_frag: Option<u32>,
+    native_vert: Option<u32>,
     native_program: Option<u32>,
-    current_version: u64, // for auto-reload
+    frag_version: u64, // for auto-reload
+    vert_version: u64, // for auto-reload
+}
+
+fn register_file(content: &mut Content, path: &str) -> PathBuf {
+    let mut buf = PathBuf::new();
+    buf.push(&content.base_path);
+    buf.push(path);
+    buf = buf.canonicalize().unwrap();
+
+    &content.resource_versions.insert(buf.clone(), 0);
+
+    buf
 }
 
 impl Shader {
     /// Creates a fragment shader.
     pub fn frag(content: &mut Content, path: &str) -> Shader {
-        let mut buf = PathBuf::new();
-        buf.push(&content.base_path);
-        buf.push(path);
-        buf = buf.canonicalize().unwrap();
-
-        &content.resource_versions.insert(buf.clone(), 0);
-
-        println!("Registering: {:?}", &buf);
+        // println!("Registering: {:?}", path);
 
         Shader {
-            path: buf,
+            frag_path: register_file(content, path),
+            vert_path: register_file(content, "shaders/2d.vert"),
             ..Default::default()
         }
     }
@@ -109,50 +133,98 @@ impl Shader {
         }
     }
 
-    pub fn load(&mut self) -> Result<(), String> {
-        println!("Loading: {:?}", &self.path);
+    unsafe fn load_file(path: &PathBuf, type_: GLenum) -> Result<u32, String> {
+        let bytes = std::fs::read(path)
+            .map_err(|err| format!("{} when loading {}", err, path.to_str().unwrap()))?;
 
-        let bytes = std::fs::read(&self.path)
-            .map_err(|err| format!("{} when loading {}", err, self.path.to_str().unwrap()))?;
+        let shader = gl::CreateShader(type_);
 
-        // Delete old shader.
-        self.delete_shader();
+        let len = bytes.len() as GLint;
+        gl::ShaderSource(shader, 1, transmute(&bytes.as_ptr()), transmute(&len));
+        gl::CompileShader(shader);
 
-        // Load new shader.
-        unsafe {
-            let shader = gl::CreateShader(gl::FRAGMENT_SHADER);
+        Ok(shader)
+    }
 
-            let len = bytes.len() as GLint;
+    unsafe fn check_shader_status(program: u32) -> Result<(), String> {
+        let buf_len: GLint = 0;
+        gl::GetShaderiv(program, gl::INFO_LOG_LENGTH, transmute(&buf_len));
 
-            gl::ShaderSource(shader, 1, transmute(&bytes.as_ptr()), transmute(&len));
-            gl::CompileShader(shader);
+        if buf_len >= 1 {
+            let mut buf: Vec<u8> = vec![0; buf_len as usize];
+            gl::GetShaderInfoLog(
+                program,
+                buf_len,
+                transmute(0u64),
+                transmute(buf.as_mut_ptr()),
+            );
 
-            let program = gl::CreateProgram();
-            gl::AttachShader(program, shader);
-            gl::LinkProgram(program);
+            match String::from_utf8(buf) {
+                Err(err) => Err(format!("Error parsing utf8: {}", err)),
+                Ok(val) => Err(format!("Error loading shader: {}", val)),
+            }?
+        }
+        Ok(())
+    }
 
-            let linked: GLint = 0;
-            gl::GetProgramiv(program, gl::LINK_STATUS, transmute(&linked));
-            if linked == 0 {
-                Err("Error linking shader.".to_owned())?
-            }
-            self.native_program = Some(program);
-            self.native_shader = Some(shader);
+    unsafe fn check_program_status(program: u32) -> Result<(), String> {
+        // Check & get native error
+        let mut linked: GLint = 1;
+        gl::GetProgramiv(program, gl::LINK_STATUS, transmute(&mut linked));
+        if linked == 0 {
+            Err("Error linking shader program")?
         }
 
         Ok(())
     }
 
-    pub fn select(&mut self, content: &mut Content) {
-        // println!("Selecting: {:?}", &self.path);
-        match content.resource_versions.get(&self.path) {
-            Some(new_version) => {
-                if *new_version != self.current_version {
-                    self.load().unwrap();
-                    self.current_version = *new_version;
-                }
-            }
+    pub fn load(&mut self) -> Result<(), String> {
+        // println!("Loading: {:?}", &self.frag_path);
+
+        // Delete old shader.
+        self.unload();
+
+        // Load new shader.
+        unsafe {
+            let vert = Shader::load_file(&self.vert_path, gl::VERTEX_SHADER)?;
+            let frag = Shader::load_file(&self.frag_path, gl::FRAGMENT_SHADER)?;
+
+            let program = gl::CreateProgram();
+            // gl::AttachShader(program, vert);
+            gl::AttachShader(program, frag);
+            gl::LinkProgram(program);
+            Shader::check_shader_status(frag)?;
+            Shader::check_shader_status(vert)?;
+            Shader::check_program_status(program)?;
+
+            self.native_program = Some(program);
+            self.native_vert = Some(vert);
+            self.native_frag = Some(frag);
+        }
+
+        Ok(())
+    }
+
+    pub fn try_load(&mut self) {
+        match self.load() {
+            Err(err) => println!(
+                "Error loading shader: {} ({})",
+                self.frag_path.to_str().unwrap(),
+                err.red()
+            ),
             _ => (),
+        }
+    }
+
+    pub fn select(&mut self, content: &mut Content) {
+        if content.should_update_resource(&self.frag_path, &mut self.frag_version) {
+            self.unload();
+            self.try_load();
+        }
+
+        if content.should_update_resource(&self.vert_path, &mut self.vert_version) {
+            self.unload();
+            self.try_load();
         }
 
         match self.native_program {
@@ -163,27 +235,35 @@ impl Shader {
         }
     }
 
-    fn delete_shader(&mut self) {
+    fn unload(&mut self) {
         match self.native_program {
             Some(program) => unsafe {
                 gl::DeleteProgram(program);
             },
             _ => (),
         }
-        match self.native_shader {
+        match self.native_frag {
             Some(shader) => unsafe {
                 gl::DeleteShader(shader);
             },
             _ => (),
         }
+        match self.native_vert {
+            Some(shader) => unsafe {
+                gl::DeleteShader(shader);
+            },
+            _ => (),
+        }
+
         self.native_program = None;
-        self.native_shader = None;
+        self.native_vert = None;
+        self.native_frag = None;
     }
 }
 
 impl Drop for Shader {
     fn drop(&mut self) {
-        self.delete_shader();
+        self.unload();
     }
 }
 

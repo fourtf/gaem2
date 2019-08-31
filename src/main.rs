@@ -23,9 +23,73 @@ fn find_sdl_gl_driver() -> Option<u32> {
     None
 }
 
-fn main() -> Result<(), String> {
-    println!("{}", -0.1 as i64);
+struct Jump<F>
+where
+    F: Fn(f64, f64, f64, f64) -> f64,
+{
+    pub max_length: f64,
+    pub max_height: f64,
 
+    pub cur_length: f64,
+    pub cur_height: f64,
+    pub is_done: bool,
+
+    pub easing: F,
+}
+
+impl<F> Jump<F>
+where
+    F: Fn(f64, f64, f64, f64) -> f64,
+{
+    pub fn new(easing: F) -> Jump<F> {
+        Jump {
+            max_height: 1.0,
+            max_length: 1.0,
+            cur_height: 0.0,
+            cur_length: 0.0,
+
+            is_done: true,
+            easing: easing,
+        }
+    }
+
+    pub fn stop(&mut self) {
+        self.is_done = true;
+    }
+
+    pub fn start(&mut self, height: f64, length: f64) {
+        self.is_done = false;
+        self.max_height = height;
+        self.max_length = length;
+        self.cur_height = 0.0;
+        self.cur_length = 0.0;
+    }
+
+    pub fn step(&mut self, time_passed: f64, is_key_down: bool) -> f64 {
+        if self.cur_length + time_passed > self.max_length {
+            // ended
+            self.stop();
+            -(self.max_height - self.cur_height)
+        } else {
+            let tmp = self.cur_height;
+            self.cur_length += time_passed;
+
+            self.cur_height = (self.easing)(self.cur_length, 0.0, self.max_height, self.max_length);
+
+            if !is_key_down {
+                self.cur_length += time_passed * 3.0;
+            }
+
+            -(self.cur_height - tmp) / time_passed * if is_key_down { 1.0 } else { 0.2 }
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.is_done
+    }
+}
+
+fn main() -> Result<(), String> {
     println!(
         "CWD: {}",
         std::env::current_dir().unwrap().to_str().unwrap() // std::path::Path::new(".")
@@ -61,6 +125,7 @@ fn main() -> Result<(), String> {
 
     let mut player_rect = Rect::new(1.0, 0.0, 0.9, 0.6);
     let mut player_on_floor = false;
+    let mut player_can_double_jump = false;
     let mut player_sliding_on_wall = false;
     let mut player_sliding_on_left_wall = false;
     #[allow(unused_assignments)]
@@ -70,6 +135,7 @@ fn main() -> Result<(), String> {
 
     let mut is_left_down = false;
     let mut is_right_down = false;
+    let mut is_jump_down = false;
     let mut is_jump_press = false;
 
     let map = Map::new(vec![
@@ -86,12 +152,19 @@ fn main() -> Result<(), String> {
 
     let mut content = Content::new();
     let mut block_shader = Shader::frag(&mut content, "shaders/block.frag");
-    block_shader.load().unwrap();
+    block_shader.try_load();
     let mut bg_shader = Shader::frag(&mut content, "shaders/bg.frag");
-    bg_shader.load().unwrap();
+    bg_shader.try_load();
 
-    let mut player_texture = Texture::new(&mut content, "textures/pajaW128.png");
+    let mut player_shader = Shader::frag(&mut content, "shaders/blob.frag");
+    player_shader.try_load();
+    let mut player_texture = Texture::new(&mut content, "textures/blob2.png");
     player_texture.load().unwrap();
+
+    let mut player_jump = Jump::new(|mut t, b, c, d| {
+        t /= d;
+        -c * (t * (t - 2.0) + b)
+    });
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -108,6 +181,7 @@ fn main() -> Result<(), String> {
                 Event::Quit { .. }
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
+                    repeat: false,
                     ..
                 } => break 'main_loop,
                 Event::KeyDown {
@@ -120,6 +194,7 @@ fn main() -> Result<(), String> {
                         is_right_down = true;
                     } else if key == Keycode::Space {
                         is_jump_press = true;
+                        is_jump_down = true;
                     }
                 }
                 Event::KeyUp {
@@ -130,6 +205,8 @@ fn main() -> Result<(), String> {
                         is_left_down = false;
                     } else if key == Keycode::D {
                         is_right_down = false;
+                    } else if key == Keycode::Space {
+                        is_jump_down = false;
                     }
                 }
                 _ => {}
@@ -142,19 +219,40 @@ fn main() -> Result<(), String> {
         // physics
         if is_jump_press {
             if player_on_floor {
-                player_dy = -25.0;
+                player_jump.start(3.0, 0.4);
             } else if player_sliding_on_wall {
-                player_dy = -15.0;
+                player_jump.start(2.0, 0.3);
                 player_dx = if player_sliding_on_left_wall {
                     10.0
                 } else {
                     -10.0
                 };
+                player_can_double_jump = true;
+            } else if player_can_double_jump {
+                player_jump.start(0.0, 0.05);
+                player_can_double_jump = false;
             }
         }
 
-        player_dy += 50.0 * time_passed;
-        player_dy = player_dy.max(-20.0).min(15.0);
+        //if is_jump_press {
+        //    if player_on_floor {
+        //        player_dy = -17.0;
+        //    } else if player_sliding_on_wall {
+        //        player_dy = -15.0;
+        //        player_dx = if player_sliding_on_left_wall {
+        //            10.0
+        //        } else {
+        //            -10.0
+        //        }
+        //    }
+        //}
+
+        if player_jump.is_done() {
+            player_dy += 40.0 * time_passed;
+            player_dy = player_dy.max(-20.0).min(13.0);
+        } else {
+            player_dy = player_jump.step(time_passed, is_jump_down);
+        }
 
         // left + right input:
         let turn_speed = if player_on_floor { 100.0 } else { 70.0 };
@@ -182,11 +280,13 @@ fn main() -> Result<(), String> {
         player_on_floor = player_collision.is_on_floor();
         if player_on_floor {
             player_dy = 0.0;
+            player_can_double_jump = true;
         }
 
         // ceiling collision
         if player_collision.top {
             player_dy = player_dy.max(0.0);
+            player_jump.stop();
         }
 
         // wall collision
@@ -228,6 +328,7 @@ fn main() -> Result<(), String> {
             gl::Enable(gl::TEXTURE_2D);
         }
 
+        player_shader.select(&mut content);
         player_texture.select(&mut content);
 
         unsafe {
