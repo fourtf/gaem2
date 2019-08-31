@@ -234,19 +234,44 @@ impl Texture {
         // Delete old texture.
         self.delete_texture();
 
+        println!("{} {}", info.width, info.height);
+
         // Load new shader.
         unsafe {
-            let mut tex: GLuint = 0;
+            let tex: GLuint = 0;
             gl::GenTextures(1, transmute(&tex));
             gl::BindTexture(gl::TEXTURE_2D, tex);
+
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT);
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT);
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR);
+            // gl::TexParameteri(
+            //     gl::TEXTURE_2D,
+            //     gl::TEXTURE_MIN_FILTER,
+            //     gl::LINEAR_MIPMAP_LINEAR,
+            // );
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::GENERATE_MIPMAP, gl::TRUE);
+
+            // gl::TexStorage2D(
+            //     gl::TEXTURE_2D,
+            //     1,
+            //     gl::RGBA8,
+            //     info.width as i32,
+            //     info.height as i32,
+            // );
+            // gl::TexSubImage2D(gl::TEXTURE_2D, 0, 0, 0, info.width as i32, info.height as i32,
+            //     gl::RGBA, gl::UNSIGNED_BYTE, transmute(buf.as_mut_ptr()));
+
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_BASE_LEVEL, 0);
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAX_LEVEL, 0);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                gl::RGBA as i32,
+                gl::RGBA8 as i32,
                 info.width as i32,
                 info.height as i32,
                 0,
-                gl::RGB,
+                gl::RGBA,
                 gl::UNSIGNED_BYTE,
                 transmute(buf.as_mut_ptr()), // try removing as_mut_ptr
             );
@@ -323,10 +348,14 @@ impl Renderer {
 
     pub fn rect(&self, rect: &Rect) {
         unsafe {
-            gl::Begin(gl::POLYGON);
+            gl::Begin(gl::QUADS);
+            gl::TexCoord2d(0.0, 0.0);
             gl::Vertex2d(rect.x, rect.y);
+            gl::TexCoord2d(1.0, 0.0);
             gl::Vertex2d(rect.x + rect.width, rect.y);
+            gl::TexCoord2d(1.0, 1.0);
             gl::Vertex2d(rect.x + rect.width, rect.y + rect.height);
+            gl::TexCoord2d(0.0, 1.0);
             gl::Vertex2d(rect.x, rect.y + rect.height);
             gl::End();
         }

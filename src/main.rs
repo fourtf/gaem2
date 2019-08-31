@@ -275,7 +275,10 @@ fn main() -> Result<(), String> {
 
         // render player
         Shader::reset();
-        renderer.rgb(1.0, 0.5, 0.0);
+        player_texture.select(&mut content);
+        unsafe {
+            gl::ShadeModel(gl::FLAT);
+        }
         renderer.rect(&player_rect);
 
         canvas.present();
