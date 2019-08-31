@@ -15,7 +15,7 @@ fn main() {
     if !path.exists() {
         let mut file = File::create(&path).unwrap();
 
-        Registry::new(Api::Gl, (4, 5), Profile::Compatibility, Fallbacks::All, [])
+        Registry::new(Api::Gl, (3, 3), Profile::Compatibility, Fallbacks::All, [])
             .write_bindings(GlobalGenerator, &mut file)
             .unwrap();
     }

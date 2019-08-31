@@ -2,9 +2,6 @@ extern crate sdl2;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-// use sdl2::pixels::Color;
-use sdl2::pixels::PixelFormatEnum;
-// use sdl2::video::GLProfile;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -38,10 +35,6 @@ fn main() -> Result<(), String> {
                                                            //     .unwrap()
     );
 
-    // int nrAttributes;
-    // glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
-    // std::cout << "Maximum nr of vertex attributes supported: " << nrAttributes << std::endl;
-
     if find_sdl_gl_driver().is_none() {
         Err("Could not initialize opengl")?
     }
@@ -49,67 +42,23 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
-    // let window2 = video_subsystem
-    //     .window("xD", 600, 400)
-    //     .position_centered()
-    //     .build()
-    //     .map_err(|e| e.to_string())?;
-
-    // sdl2::messagebox::show_simple_message_box(
-    //     sdl2::messagebox::MessageBoxFlag::INFORMATION,
-    //     "xD",
-    //     "uff",
-    //     Some(&window2),
-    // );
+    let gl_attr = video_subsystem.gl_attr();
+    gl_attr.set_context_profile(sdl2::video::GLProfile::Compatibility);
+    gl_attr.set_context_version(3, 3);
 
     let window = video_subsystem
         .window("xD", 711, 400)
         .position_centered()
         .opengl()
-        .allow_highdpi()
+        // .allow_highdpi()
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut canvas = window
-        .into_canvas()
-        .index(find_sdl_gl_driver().unwrap())
-        .target_texture()
-        .build()
-        .map_err(|e| e.to_string())?;
+    /*let ctx =*/
+    window.gl_create_context().unwrap();
 
     gl::load_with(|name| video_subsystem.gl_get_proc_address(name) as *const _);
-    canvas.window().gl_set_context_to_current()?;
     init_drawing();
-
-    let texture_creator = canvas.texture_creator();
-    let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, 256, 256)
-        .map_err(|e| e.to_string())?;
-
-    texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-        for y in 0..256 {
-            for x in 0..256 {
-                let offset = y * pitch + x * 3;
-                buffer[offset] = x as u8;
-                buffer[offset + 1] = y as u8;
-                buffer[offset + 2] = 0;
-            }
-        }
-    })?;
-
-    let mut black_texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, 64, 64)
-        .map_err(|e| e.to_string())?;
-    black_texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-        for y in 0..64 {
-            for x in 0..64 {
-                let offset = y * pitch + x * 3;
-                buffer[offset] = 0u8;
-                buffer[offset + 1] = 0u8;
-                buffer[offset + 2] = 0u8;
-            }
-        }
-    })?;
 
     let mut player_rect = Rect::new(1.0, 0.0, 0.9, 0.7);
     let mut player_on_floor = false;
@@ -142,7 +91,7 @@ fn main() -> Result<(), String> {
     let mut bg_shader = Shader::frag(&mut content, "shaders/bg.frag");
     bg_shader.load().unwrap();
 
-    let mut player_texture = Texture::new(&mut content, "textures/pajaW.png");
+    let mut player_texture = Texture::new(&mut content, "textures/pajaW128.png");
     player_texture.load().unwrap();
 
     let mut event_pump = sdl_context.event_pump()?;
@@ -273,15 +222,23 @@ fn main() -> Result<(), String> {
             }
         }
 
-        // render player
+        //// render player
         Shader::reset();
-        player_texture.select(&mut content);
+
         unsafe {
-            gl::ShadeModel(gl::FLAT);
+            gl::Enable(gl::TEXTURE_2D);
         }
+
+        player_texture.select(&mut content);
+
+        unsafe {
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::Enable(gl::BLEND);
+        }
+
         renderer.rect(&player_rect);
 
-        canvas.present();
+        window.gl_swap_window();
 
         // let frame_time = Duration::from_micros(50000);
         let frame_time = Duration::from_micros(6944);

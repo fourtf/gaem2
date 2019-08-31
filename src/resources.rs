@@ -221,9 +221,6 @@ impl Texture {
     pub fn load(&mut self) -> Result<(), String> {
         println!("Loading: {:?}", &self.path);
 
-        // let bytes = fs::read(&self.path)
-        //     .map_err(|err| format!("{} when loading {}", err, self.path.to_str().unwrap()))?;
-
         let decoder = png::Decoder::new(File::open(&self.path).unwrap());
         // .map_err(|err| format!("{} when loading {}", err, self.path.to_sThe glGenTextures function is only available in OpenGL version 1.1 or later.tr().unwrap()))?;
 
@@ -242,38 +239,19 @@ impl Texture {
             gl::GenTextures(1, transmute(&tex));
             gl::BindTexture(gl::TEXTURE_2D, tex);
 
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT);
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT);
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR);
-            // gl::TexParameteri(
-            //     gl::TEXTURE_2D,
-            //     gl::TEXTURE_MIN_FILTER,
-            //     gl::LINEAR_MIPMAP_LINEAR,
-            // );
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::GENERATE_MIPMAP, gl::TRUE);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, 0x2601);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, 0x2601);
 
-            // gl::TexStorage2D(
-            //     gl::TEXTURE_2D,
-            //     1,
-            //     gl::RGBA8,
-            //     info.width as i32,
-            //     info.height as i32,
-            // );
-            // gl::TexSubImage2D(gl::TEXTURE_2D, 0, 0, 0, info.width as i32, info.height as i32,
-            //     gl::RGBA, gl::UNSIGNED_BYTE, transmute(buf.as_mut_ptr()));
-
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_BASE_LEVEL, 0);
-            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAX_LEVEL, 0);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                gl::RGBA8 as i32,
+                gl::RGBA as i32,
                 info.width as i32,
                 info.height as i32,
                 0,
                 gl::RGBA,
                 gl::UNSIGNED_BYTE,
-                transmute(buf.as_mut_ptr()), // try removing as_mut_ptr
+                transmute(buf.as_mut_ptr()),
             );
 
             self.native = Some(tex);
