@@ -54,13 +54,12 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    /*let ctx =*/
-    window.gl_create_context().unwrap();
+    let _ctx = window.gl_create_context().unwrap();
 
     gl::load_with(|name| video_subsystem.gl_get_proc_address(name) as *const _);
     init_drawing();
 
-    let mut player_rect = Rect::new(1.0, 0.0, 0.9, 0.7);
+    let mut player_rect = Rect::new(1.0, 0.0, 0.9, 0.6);
     let mut player_on_floor = false;
     let mut player_sliding_on_wall = false;
     let mut player_sliding_on_left_wall = false;
